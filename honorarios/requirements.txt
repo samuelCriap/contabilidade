@@ -1,0 +1,11 @@
+# Sistema de Honorários Contábeis - Dependências
+flet>=0.21.0
+pillow>=10.0.0
+pypdf2>=3.0.0
+reportlab>=4.0.0
+matplotlib>=3.0.0
+qrcode[pil]>=7.0
+openpyxl>=3.0.0
+requests>=2.31.0
+pyinstaller
+
