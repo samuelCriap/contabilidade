@@ -23,7 +23,7 @@ from utils.theme import ThemeManager, CORES
 from utils.toast import toast_success, toast_error, toast_warning
 from utils.updater import GitHubUpdater
 
-VERSION = "1.1.0"
+VERSION = "1.1.1"
 
 
 def main(page: ft.Page):
@@ -188,9 +188,27 @@ def main(page: ft.Page):
                 def download_thread():
                     file_path = updater.download_update(asset_url, on_progress)
                     if file_path:
-                        prog_text.value = "Instalando..."
+                        dlg_prog.open = False
                         page.update()
-                        updater.apply_update(file_path)
+                        
+                        def instalar(e):
+                            dlg_complete.open = False
+                            page.update()
+                            updater.apply_update(file_path)
+                            
+                        dlg_complete = ft.AlertDialog(
+                            modal=True,
+                            title=ft.Text("Download Concluído", weight=ft.FontWeight.BOLD, color=TEXT_PRIMARY),
+                            content=ft.Text("A atualização foi baixada com sucesso.\n\nO aplicativo será encerrado para concluir a instalação.\nPor favor, aguarde alguns segundos e abra novamente.", color=TEXT_SECONDARY),
+                            actions=[
+                                ft.ElevatedButton("Concluir e Instalar", bgcolor=SUCCESS, color=TEXT_PRIMARY, on_click=instalar)
+                            ],
+                            actions_alignment=ft.MainAxisAlignment.END,
+                            bgcolor=DARK_BG,
+                        )
+                        page.overlay.append(dlg_complete)
+                        dlg_complete.open = True
+                        page.update()
                     else:
                         dlg_prog.open = False
                         toast_error(page, "Falha ao baixar atualização")
@@ -224,7 +242,8 @@ def main(page: ft.Page):
                     
                     if asset_url:
                         # Modal de confirmação
-                        dlg_confirm.content.controls[0].value = f"Nova versão {update_info['version']} disponível!\nDeseja atualizar agora?"
+                        dlg_confirm.content.controls[0].value = f"Nova versão {update_info['version']} disponível!"
+                        dlg_confirm.content.controls[2].content.value = update_info.get('body', 'Melhorias e correções de bugs.')
                         dlg_confirm.actions[1].on_click = lambda e: iniciar_atualizacao(asset_url)
                         page.overlay.append(dlg_confirm)
                         dlg_confirm.open = True
@@ -239,8 +258,15 @@ def main(page: ft.Page):
                 title=ft.Text("🚀 Atualização Disponível", weight=ft.FontWeight.BOLD, color=TEXT_PRIMARY),
                 bgcolor=DARK_BG,
                 content=ft.Column([
-                    ft.Text("", size=14, color=TEXT_SECONDARY),
-                ], width=320, height=60),
+                    ft.Text("", size=16, weight=ft.FontWeight.BOLD, color=TEXT_PRIMARY),
+                    ft.Divider(color=DARK_CARD),
+                    ft.Container(
+                        content=ft.Text("", size=13, color=TEXT_SECONDARY, selectable=True),
+                        padding=10,
+                        bgcolor=DARK_SURFACE,
+                        border_radius=8,
+                    )
+                ], width=500, height=400, scroll=ft.ScrollMode.AUTO),
                 actions=[
                     ft.TextButton("Mais tarde", on_click=lambda e: (setattr(dlg_confirm, 'open', False), callback_sucesso(), page.update())),
                     ft.ElevatedButton("Atualizar Agora", bgcolor=ACCENT, color=TEXT_PRIMARY),

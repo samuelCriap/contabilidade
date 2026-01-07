@@ -91,7 +91,7 @@ class GitHubUpdater:
         exe_name = os.path.basename(current_exe)
         
         # Script bat para realizar a troca
-        # Ele espera o processo atual fechar, move o novo arquivo e reinicia
+        # Ele espera o processo atual fechar, move o novo arquivo e deleta o script
         bat_script = f"""
 @echo off
 timeout /t 2 /nobreak > NUL
@@ -102,7 +102,6 @@ if not errorlevel 1 (
     goto loop
 )
 move /y "{new_file_path}" "{current_exe}"
-start "" "{current_exe}"
 del "%~f0"
 """
         
@@ -112,4 +111,6 @@ del "%~f0"
             
         # Executar script em background
         subprocess.Popen([bat_path], shell=True)
-        sys.exit(0)
+        
+        # Forçar encerramento imediato
+        os._exit(0)
