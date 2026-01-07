@@ -18,6 +18,7 @@ rmdir /s /q dist
 echo Compilando...
 pyinstaller --noconfirm --onefile --windowed --clean ^
     --name "HonorariosContabeis" ^
+    --icon "honorarios/data/logo.ico" ^
     --paths "honorarios" ^
     --add-data "honorarios/data;honorarios/data" ^
     --hidden-import "database" ^
@@ -34,7 +35,19 @@ pyinstaller --noconfirm --onefile --windowed --clean ^
     honorarios/app_flet.py
 
 echo.
+echo ==========================================
+echo       Organizando Arquivos
+echo ==========================================
+
+echo Criando pasta Data...
+mkdir "dist\Data" 2>nul
+
+echo Copiando arquivos externos...
+copy /Y "honorarios\data\*.*" "dist\Data\"
+copy /Y "logo.png" "dist\Data\"
+
 if exist dist\HonorariosContabeis.exe (
+    echo.
     echo ==========================================
     echo [SUCESSO] Executavel gerado em dist\HonorariosContabeis.exe
     echo ==========================================

@@ -6,6 +6,15 @@ import flet as ft
 import os
 import sys
 import asyncio
+import ssl
+
+# Patch para erros de SSL em redes corporativas/PCs antigos
+try:
+    _create_unverified_https_context = ssl._create_unverified_context
+except AttributeError:
+    pass
+else:
+    ssl._create_default_https_context = _create_unverified_https_context
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -14,7 +23,7 @@ from utils.theme import ThemeManager, CORES
 from utils.toast import toast_success, toast_error, toast_warning
 from utils.updater import GitHubUpdater
 
-VERSION = "0.1"
+VERSION = "1.1.0"
 
 
 def main(page: ft.Page):
@@ -122,8 +131,16 @@ def main(page: ft.Page):
                     "is_admin": cargo == 'admin'
                 }
                 # Registrar log de login
-                from database import registrar_log
+                from database import registrar_log, gerar_honorarios_mes_atual
                 registrar_log(login_usuario.value.strip(), "Login realizado", detalhes=f"Cargo: {cargo}")
+                
+                # Gerar automaticamente honorários do mês atual para clientes ativos
+                try:
+                    criados = gerar_honorarios_mes_atual()
+                    if criados > 0:
+                        print(f"[AUTO] Gerados {criados} honorários para o mês atual")
+                except Exception as ex:
+                    print(f"[AVISO] Erro ao gerar honorários automáticos: {ex}")
                 
                 # Verificar update antes de abrir app
                 verificar_atualizacao(mostrar_splash)
@@ -360,6 +377,9 @@ def main(page: ft.Page):
         # Tabs
         tabs = ft.Tabs(
             selected_index=0,
+            label_color=TEXT_PRIMARY,
+            unselected_label_color=TEXT_SECONDARY,
+            indicator_color=ACCENT,
             tabs=[
                 ft.Tab(text="Login", content=ft.Container(content=aba_login, padding=20)),
                 ft.Tab(text="Cadastrar", content=ft.Container(content=aba_cadastro, padding=20)),

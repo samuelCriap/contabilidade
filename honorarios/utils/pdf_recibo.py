@@ -10,72 +10,82 @@ from reportlab.lib.colors import HexColor
 import os
 from datetime import datetime
 
-
+# Converte número para texto por extenso
 def numero_por_extenso(valor):
-    """Converte número para texto por extenso"""
-    unidades = ['', 'um', 'dois', 'três', 'quatro', 'cinco', 'seis', 'sete', 'oito', 'nove',
-                'dez', 'onze', 'doze', 'treze', 'quatorze', 'quinze', 'dezesseis', 'dezessete', 'dezoito', 'dezenove']
-    dezenas = ['', '', 'vinte', 'trinta', 'quarenta', 'cinquenta', 'sessenta', 'setenta', 'oitenta', 'noventa']
-    centenas = ['', 'cento', 'duzentos', 'trezentos', 'quatrocentos', 'quinhentos', 
-                'seiscentos', 'setecentos', 'oitocentos', 'novecentos']
+    if valor == 0:
+        return "zero reais"
+        
+    unidades = ["", "um", "dois", "três", "quatro", "cinco", "seis", "sete", "oito", "nove"]
+    dezes = ["dez", "onze", "doze", "treze", "quatorze", "quinze", "dezesseis", "dezessete", "dezoito", "dezenove"]
+    dezenas = ["", "", "vinte", "trinta", "quarenta", "cinquenta", "sessenta", "setenta", "oitenta", "noventa"]
+    centenas = ["", "cento", "duzentos", "trezentos", "quatrocentos", "quinhentos", "seiscentos", "setecentos", "oitocentos", "novecentos"]
     
     def extenso_centena(n):
-        if n == 0:
-            return ''
-        if n == 100:
-            return 'cem'
-        if n < 20:
-            return unidades[n]
-        if n < 100:
-            d, u = divmod(n, 10)
-            if u == 0:
-                return dezenas[d]
-            return f"{dezenas[d]} e {unidades[u]}"
-        c, resto = divmod(n, 100)
-        if resto == 0:
-            return centenas[c] if c != 1 else 'cem'
-        return f"{centenas[c]} e {extenso_centena(resto)}"
-    
+        if n == 0: return ""
+        if n == 100: return "cem"
+        
+        c = n // 100
+        d = (n % 100)
+        
+        texto = []
+        if c > 0: texto.append(centenas[c])
+        
+        if d > 0:
+            if texto: texto.append("e")
+            if d < 10: texto.append(unidades[d])
+            elif d < 20: texto.append(dezes[d-10])
+            else:
+                texto.append(dezenas[d//10])
+                if d % 10 > 0:
+                    texto.append("e")
+                    texto.append(unidades[d%10])
+        return " ".join(texto)
+
     def extenso_milhar(n):
-        if n == 0:
-            return 'zero'
-        if n < 1000:
-            return extenso_centena(n)
-        m, resto = divmod(n, 1000)
-        if m == 1:
-            milhares = 'mil'
-        else:
-            milhares = f"{extenso_centena(m)} mil"
-        if resto == 0:
-            return milhares
-        if resto < 100:
-            return f"{milhares} e {extenso_centena(resto)}"
-        return f"{milhares}, {extenso_centena(resto)}"
-    
+        if n == 0: return ""
+        partes = []
+        
+        milhoes = n // 1000000
+        mil = (n % 1000000) // 1000
+        cent = n % 1000
+        
+        if milhoes > 0:
+            partes.append(extenso_centena(milhoes))
+            partes.append("milhão" if milhoes == 1 else "milhões")
+            if (mil > 0 or cent > 0): partes.append("e")
+            
+        if mil > 0:
+            if mil == 1: partes.append("um mil")
+            else: 
+                partes.append(extenso_centena(mil))
+                partes.append("mil")
+            if cent > 0: partes.append("e")
+            
+        if cent > 0:
+            partes.append(extenso_centena(cent))
+            
+        return " ".join(partes)
+
     inteiro = int(valor)
-    centavos = round((valor - inteiro) * 100)
+    decimal = int(round((valor - inteiro) * 100))
     
-    resultado = extenso_milhar(inteiro)
+    texto = []
+    if inteiro > 0:
+        texto.append(extenso_milhar(inteiro))
+        texto.append("real" if inteiro == 1 else "reais")
     
-    if inteiro == 1:
-        resultado += " real"
-    else:
-        resultado += " reais"
-    
-    if centavos > 0:
-        if centavos == 1:
-            resultado += f" e {extenso_centena(centavos)} centavo"
-        else:
-            resultado += f" e {extenso_centena(centavos)} centavos"
-    
-    return resultado
+    if decimal > 0:
+        if inteiro > 0: texto.append("e")
+        texto.append(extenso_centena(decimal))
+        texto.append("centavo" if decimal == 1 else "centavos")
+        
+    return " ".join(texto)
 
 
 MESES = [
     "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
     "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
 ]
-
 
 def gerar_pdf_recibo(cliente, valor, mes, ano, numero_recibo, pasta_destino, dados_empresa, certificados=None, extras=None):
     """Gera um PDF de recibo conforme modelo de referência"""
@@ -179,6 +189,13 @@ def gerar_pdf_recibo(cliente, valor, mes, ano, numero_recibo, pasta_destino, dad
     c.setFont("Helvetica", 10)
     c.drawString(margin + 55, y, cliente['nome'])
     
+    if cliente.get('cnpj'):
+        y -= 14
+        c.setFont("Helvetica-Bold", 10)
+        c.drawString(margin, y, "CNPJ:")
+        c.setFont("Helvetica", 10)
+        c.drawString(margin + 55, y, cliente['cnpj'])
+        
     y -= 25
     
     # ═══════════════════════════════════════════════════════════════

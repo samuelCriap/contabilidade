@@ -10,25 +10,45 @@ import sys
 
 # Caminho do banco de dados
 def get_resource_path(relative_path):
-    """Retorna o caminho absoluto do recurso, compatível com PyInstaller"""
-    if hasattr(sys, '_MEIPASS'):
-        return os.path.join(sys._MEIPASS, relative_path)
-    return os.path.join(os.path.abspath("."), relative_path)
+    """Retorna o caminho absoluto do recurso, priorizando arquivos locais externos"""
+    if getattr(sys, 'frozen', False):
+        base_path = os.path.dirname(sys.executable)
+        
+        # 1. Tentar na pasta "Data" ao lado do executável
+        external_data_path = os.path.join(base_path, "Data", relative_path)
+        if os.path.exists(external_data_path):
+            return external_data_path
+            
+        # 2. Tentar na raiz do executável (fallback)
+        external_root_path = os.path.join(base_path, relative_path)
+        if os.path.exists(external_root_path):
+            return external_root_path
+            
+        # 2. Se não achar externo, usa o interno (PyInstaller bundle)
+        if hasattr(sys, '_MEIPASS'):
+            # O PyInstaller pode achatar a estrutura ou manter.
+            return os.path.join(sys._MEIPASS, "honorarios", "data", relative_path)
+    
+    # Desenvolvimento
+    return os.path.join(os.path.abspath("honorarios/data"), relative_path)
 
 if getattr(sys, 'frozen', False):
     # Executável
     # 1. Tentar usar DB local (portabilidade)
     exe_dir = os.path.dirname(sys.executable)
-    local_db = os.path.join(exe_dir, "honorarios", "data", "honorarios.db") # Estrutura original mantida
-    # ou testar na raiz se o usuário colocou lá
+    
+    # Prioridade 1: Pasta 'Data' ao lado do executável
+    data_db = os.path.join(exe_dir, "Data", "honorarios.db")
+    
+    # Prioridade 2: Raiz do executável
     root_db = os.path.join(exe_dir, "honorarios.db")
     
-    if os.path.exists(root_db):
+    if os.path.exists(data_db):
+        DB_PATH = data_db
+    elif os.path.exists(root_db):
         DB_PATH = root_db
-    elif os.path.exists(local_db):
-        DB_PATH = local_db
     else:
-        # 2. Usar AppData (padrão)
+        # Prioridade 3: AppData (padrão se não houver portátil)
         app_data = os.path.join(os.environ['LOCALAPPDATA'], 'HonorariosContabeis')
         os.makedirs(app_data, exist_ok=True)
         DB_PATH = os.path.join(app_data, "honorarios.db")
@@ -683,6 +703,66 @@ def criar_honorarios_ano_cliente(cliente_id, ano, valor):
     
     conn.commit()
     conn.close()
+
+
+def gerar_honorarios_mes_atual():
+    """
+    Gera automaticamente honorários PENDENTES para o mês atual
+    para todos os clientes ativos que têm valor cadastrado para o ano.
+    Retorna quantidade de honorários criados.
+    """
+    from datetime import datetime
+    
+    mes_atual = datetime.now().month
+    ano_atual = datetime.now().year
+    
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    # Buscar todos os clientes ativos
+    cursor.execute("SELECT id, nome FROM clientes WHERE ativo = 1")
+    clientes = cursor.fetchall()
+    
+    criados = 0
+    
+    for cliente in clientes:
+        cliente_id = cliente['id']
+        
+        # Verificar se já existe honorário para este mês/ano
+        cursor.execute("""
+            SELECT id FROM honorarios 
+            WHERE cliente_id = ? AND ano = ? AND mes = ?
+        """, (cliente_id, ano_atual, mes_atual))
+        
+        if cursor.fetchone():
+            continue  # Já existe
+        
+        # Buscar valor do ano para o cliente
+        cursor.execute("""
+            SELECT valor FROM valores_honorarios 
+            WHERE cliente_id = ? AND ano = ?
+        """, (cliente_id, ano_atual))
+        resultado = cursor.fetchone()
+        
+        if not resultado:
+            # Tentar pegar valor do cliente (campo legado)
+            cursor.execute("SELECT valor_honorario FROM clientes WHERE id = ?", (cliente_id,))
+            valor_result = cursor.fetchone()
+            valor = valor_result['valor_honorario'] if valor_result and valor_result['valor_honorario'] else None
+        else:
+            valor = resultado['valor']
+        
+        if valor and valor > 0:
+            cursor.execute("""
+                INSERT INTO honorarios (cliente_id, ano, mes, valor, status)
+                VALUES (?, ?, ?, ?, 'PENDENTE')
+            """, (cliente_id, ano_atual, mes_atual, valor))
+            criados += 1
+    
+    conn.commit()
+    conn.close()
+    
+    return criados
 
 
 def recibo_existe(cliente_id, mes, ano):

@@ -6,7 +6,7 @@ import flet as ft
 from datetime import datetime
 import os
 
-from database import listar_clientes, adicionar_cliente, atualizar_cliente, get_config, set_config, get_connection
+from database import listar_clientes, adicionar_cliente, atualizar_cliente, get_config, set_config, get_connection, set_valor_honorario_ano, listar_valores_honorarios_cliente, criar_honorarios_ano_cliente
 from utils.theme import CORES
 from utils.toast import toast_success, toast_error, toast_warning
 
@@ -140,20 +140,125 @@ def criar_tela_configuracoes(page: ft.Page, usuario_logado, theme, VERSION="0.1"
             dlg.open = False
             page.update()
         
+        # === ABA VALORES POR ANO (somente edição) ===
+        valores_por_ano = {}
+        ano_atual = datetime.now().year
+        campos_anos = {}
+        
+        if not is_novo:
+            # Carregar valores existentes
+            valores_existentes = listar_valores_honorarios_cliente(cliente['id'])
+            for ano_val, valor_val in valores_existentes:
+                valores_por_ano[ano_val] = valor_val
+        
+        # Criar campos de 2021 a ano_atual + 1
+        for ano in range(2021, ano_atual + 2):
+            valor_existente = valores_por_ano.get(ano, "")
+            campos_anos[ano] = ft.TextField(
+                label=str(ano), width=100,
+                value=str(valor_existente) if valor_existente else "",
+                bgcolor=INPUT_BG, border_color=INPUT_BORDER, color=TEXT_PRIMARY,
+                keyboard_type=ft.KeyboardType.NUMBER,
+            )
+        
+        def gerar_honorarios_ano(e, ano_selecionado):
+            """Gera 12 honorários pendentes para o ano selecionado"""
+            if is_novo:
+                toast_warning(page, "Salve o cliente primeiro!")
+                return
+            
+            valor_str = campos_anos[ano_selecionado].value
+            if not valor_str:
+                toast_warning(page, f"Informe o valor para {ano_selecionado}")
+                return
+            
+            try:
+                valor = float(valor_str.replace(",", "."))
+                criar_honorarios_ano_cliente(cliente['id'], ano_selecionado, valor)
+                toast_success(page, f"Honorários de {ano_selecionado} gerados!")
+            except Exception as ex:
+                toast_error(page, f"Erro: {ex}")
+        
+        def salvar_valores_anos(e):
+            """Salva todos os valores por ano"""
+            if is_novo:
+                toast_warning(page, "Salve o cliente primeiro!")
+                return
+            
+            for ano, campo in campos_anos.items():
+                if campo.value:
+                    try:
+                        valor = float(campo.value.replace(",", "."))
+                        set_valor_honorario_ano(cliente['id'], ano, valor)
+                    except:
+                        pass
+            toast_success(page, "Valores por ano salvos!")
+        
+        # Layout da aba Valores por Ano
+        rows_anos = []
+        anos_lista = list(campos_anos.keys())
+        for i in range(0, len(anos_lista), 3):
+            row_items = []
+            for ano in anos_lista[i:i+3]:
+                campo = campos_anos[ano]
+                btn_gerar = ft.IconButton(
+                    icon=ft.Icons.ADD_CIRCLE_OUTLINE,
+                    tooltip=f"Gerar Honorários {ano}",
+                    icon_size=20,
+                    icon_color=ACCENT,
+                    on_click=lambda e, a=ano: gerar_honorarios_ano(e, a),
+                )
+                row_items.append(ft.Row([campo, btn_gerar], spacing=2))
+            rows_anos.append(ft.Row(row_items, spacing=15))
+        
+        aba_dados = ft.Tab(
+            text="📋 Dados",
+            content=ft.Container(
+                padding=10,
+                content=ft.Column([
+                    nome,
+                    ft.Row([codigo, cnpj], spacing=10),
+                    ft.Row([cpf, telefone], spacing=10),
+                    endereco,
+                    ft.Row([email, valor_honorario], spacing=10),
+                ], spacing=10),
+            )
+        )
+        
+        aba_valores = ft.Tab(
+            text="💰 Valores/Ano",
+            content=ft.Container(
+                padding=10,
+                content=ft.Column([
+                    ft.Text("Valor do honorário para cada ano:", size=12, color=TEXT_SECONDARY),
+                    *rows_anos,
+                    ft.ElevatedButton(
+                        "💾 Salvar Valores",
+                        bgcolor=SUCCESS, color="white",
+                        on_click=salvar_valores_anos,
+                    ),
+                ], spacing=10),
+            )
+        )
+        
+        tabs = ft.Tabs(
+            selected_index=0,
+            tabs=[aba_dados, aba_valores] if not is_novo else [aba_dados],
+            expand=True,
+        )
+        
         dlg = ft.AlertDialog(
             modal=True,
             title=ft.Text("➕ Novo Cliente" if is_novo else "✏️ Editar", weight=ft.FontWeight.BOLD, color=TEXT_PRIMARY),
             bgcolor=BG,
-            content=ft.Column([
-                nome,
-                ft.Row([codigo, cnpj], spacing=10),
-                ft.Row([cpf, telefone], spacing=10),
-                endereco,
-                ft.Row([email, valor_honorario], spacing=10),
-            ], spacing=10, width=420),
+            content=ft.Container(
+                width=500,
+                height=350,
+                content=tabs,
+            ),
             actions=[
                 ft.TextButton("Cancelar", on_click=fechar),
-                ft.ElevatedButton("Salvar", bgcolor=SUCCESS, color=TEXT_PRIMARY, on_click=salvar),
+                ft.ElevatedButton("Salvar Dados", bgcolor=SUCCESS, color=TEXT_PRIMARY, on_click=salvar),
             ],
         )
         page.overlay.append(dlg)
@@ -172,8 +277,15 @@ def criar_tela_configuracoes(page: ft.Page, usuario_logado, theme, VERSION="0.1"
             ws = wb.active
             ws.title = "Clientes"
             
+            # Anos para colunas de valores
+            anos = list(range(2021, datetime.now().year + 2))  # 2021 até ano_atual + 1
+            
             # Cabeçalhos
             headers = ["ID", "Código", "Nome", "CNPJ", "CPF", "Endereço", "Telefone", "Email", "Valor Honorário"]
+            # Adicionar colunas de anos
+            for ano in anos:
+                headers.append(f"Valor {ano}")
+            
             header_fill = PatternFill(start_color="3B82F6", end_color="3B82F6", fill_type="solid")
             header_font = Font(bold=True, color="FFFFFF")
             
@@ -198,6 +310,14 @@ def criar_tela_configuracoes(page: ft.Page, usuario_logado, theme, VERSION="0.1"
                     ws.cell(row=row, column=9, value=cliente['valor_honorario'] or "")
                 except:
                     ws.cell(row=row, column=9, value="")
+                
+                # Valores por ano
+                valores_cliente = listar_valores_honorarios_cliente(cliente['id'])
+                valores_dict = {ano: valor for ano, valor in valores_cliente}
+                
+                for col_idx, ano in enumerate(anos, 10):
+                    valor_ano = valores_dict.get(ano, "")
+                    ws.cell(row=row, column=col_idx, value=valor_ano if valor_ano else "")
             
             # Ajustar largura
             ws.column_dimensions['A'].width = 8
@@ -209,6 +329,10 @@ def criar_tela_configuracoes(page: ft.Page, usuario_logado, theme, VERSION="0.1"
             ws.column_dimensions['G'].width = 15
             ws.column_dimensions['H'].width = 30
             ws.column_dimensions['I'].width = 15
+            # Colunas de anos
+            from openpyxl.utils import get_column_letter
+            for i in range(len(anos)):
+                ws.column_dimensions[get_column_letter(10 + i)].width = 12
             
             wb_exportar[0] = wb
             # Abrir seletor de pasta
@@ -251,6 +375,18 @@ def criar_tela_configuracoes(page: ft.Page, usuario_logado, theme, VERSION="0.1"
             
             atualizados = 0
             adicionados = 0
+            valores_salvos = 0
+            
+            # Detectar colunas de anos no cabeçalho
+            anos_colunas = {}  # {ano: coluna}
+            for col in range(10, ws.max_column + 1):
+                header = ws.cell(row=1, column=col).value
+                if header and "Valor" in str(header):
+                    try:
+                        ano = int(str(header).replace("Valor", "").strip())
+                        anos_colunas[ano] = col
+                    except:
+                        pass
             
             for row in range(2, ws.max_row + 1):
                 cliente_id = ws.cell(row=row, column=1).value
@@ -281,6 +417,7 @@ def criar_tela_configuracoes(page: ft.Page, usuario_logado, theme, VERSION="0.1"
                         WHERE id=?
                     """, (codigo, nome, cnpj, cpf, endereco, telefone, email, valor_hon, cliente_id))
                     atualizados += 1
+                    atual_cliente_id = cliente_id
                 else:
                     # Adicionar novo cliente
                     cursor.execute("""
@@ -288,6 +425,23 @@ def criar_tela_configuracoes(page: ft.Page, usuario_logado, theme, VERSION="0.1"
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     """, (codigo, nome, cnpj, cpf, endereco, telefone, email, valor_hon))
                     adicionados += 1
+                    atual_cliente_id = cursor.lastrowid
+                
+                # Importar valores por ano
+                for ano, col in anos_colunas.items():
+                    valor_ano = ws.cell(row=row, column=col).value
+                    if valor_ano:
+                        if isinstance(valor_ano, str):
+                            try:
+                                valor_ano = float(valor_ano.replace(",", ".").replace("R$", "").strip())
+                            except:
+                                continue
+                        if valor_ano and valor_ano > 0:
+                            cursor.execute("""
+                                INSERT OR REPLACE INTO valores_honorarios (cliente_id, ano, valor)
+                                VALUES (?, ?, ?)
+                            """, (atual_cliente_id, ano, valor_ano))
+                            valores_salvos += 1
             
             conn.commit()
             conn.close()
@@ -298,6 +452,8 @@ def criar_tela_configuracoes(page: ft.Page, usuario_logado, theme, VERSION="0.1"
                 msg.append(f"{adicionados} adicionado(s)")
             if atualizados > 0:
                 msg.append(f"{atualizados} atualizado(s)")
+            if valores_salvos > 0:
+                msg.append(f"{valores_salvos} valores/ano")
             toast_success(page, " | ".join(msg) if msg else "Nenhuma alteração")
         except ImportError:
             toast_error(page, "Instale: pip install openpyxl")

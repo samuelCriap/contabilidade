@@ -342,7 +342,8 @@ def criar_tela_honorarios_ano(page: ft.Page, ano: int, mes_filtro, theme, voltar
             toast_error(page, str(ex))
     
     def on_filtro_mes_change(e):
-        filtro_mes[0] = int(e.control.value) if e.control.value else None
+        val = e.control.value
+        filtro_mes[0] = int(val) if val and val.isdigit() else None
         carregar_dados()
     
     filtro_mes_dd = ft.Dropdown(
